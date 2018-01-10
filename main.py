@@ -59,7 +59,12 @@ logger.setLevel(logging.DEBUG)
 
 
 def last_completed_task_time(tasks: dict):
-    return max(list(map(lambda x: tasks[x].dend, list(filter(lambda x: tasks[x].done, tasks)))))
+    done_tasks = list(filter(lambda x: tasks[x].done, tasks))
+    dends = list(map(lambda x: tasks[x].dend, done_tasks))
+    if dends:
+        return max(dends)
+    else:
+        return -1
 
 
 def get_completed_tasks(tasks: dict):
@@ -150,11 +155,15 @@ def button(bot, update):
         ts = int(time.time())
         tasks_info[task_text] = Task(ts)
 
-        time_delta = ts - last_completed_task_time(tasks_info)
-        time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
+        last_time = last_completed_task_time(tasks_info)
+        if last_time != -1:
+            time_delta = ts - last_time
+            time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
 
-        bot.edit_message_text('Time since last completed task: {}'.format(time_delta), chat_id=query.message.chat_id,
-                              message_id=query.message.message_id)
+            bot.edit_message_text('Time since last completed task: {}'.format(time_delta), chat_id=query.message.chat_id,
+                                      message_id=query.message.message_id)
+        else:
+            bot.edit_message_text('I hope you will manage with this task :)', chat_id=query.message.chat_id, message_id=query.message.message_id)
 
         keyboard = [
             [InlineKeyboardButton(emoji.emojize(":repeat:", use_aliases=True), callback_data='act_pause'),  # Pause
@@ -391,7 +400,6 @@ def main():
     updater = Updater(get_token())
 
     bot = telegram.Bot(token=get_token())
-    bot.sendMessage(chat_id=admin_id, text='I am back')
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("running_tasks", running_tasks))
