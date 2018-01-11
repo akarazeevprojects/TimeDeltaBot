@@ -17,6 +17,51 @@ import json
 import re
 import os
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+class Statistics:
+    def __init__(self):
+        self.pauses = [0]
+        self.total_times = [0]
+        self.change_day = False
+
+    def add(self, total, pause):
+        if self.change_day:
+            self.pauses.append(0)
+            self.total_times.append(0)
+            self.change_day = False
+
+        self.pauses[-1] += pause
+        self.total_times[-1] += total
+
+    def next_day(self):
+        self.change_day = True
+
+    def plot(self, n_last_days=7, filename='foo.png'):
+        if n_last_days > len(self.pauses):
+            n_last_days = len(self.pauses)
+
+        r = np.arange(n_last_days)
+        barWidth = 1
+        plt.figure(figsize=(11, 5))
+        plt.title("Last {} days".format(n_last_days))
+
+        total = np.array(self.total_times[-n_last_days:])
+        pauses = np.array(self.pauses[-n_last_days:])
+
+        plt.bar(r, total - pauses, color='#557f2d', edgecolor='white', width=barWidth, label='Productivity time')
+        plt.bar(r, pauses, color='#7f6d5f', edgecolor='white', width=barWidth, alpha=0.6, label='Interruption time')
+        plt.legend()
+
+        effects = list(map(lambda x: '{:.1f}%'.format(x), 100 * ((total - pauses) / total)))
+        plt.xticks(r, effects)
+        plt.xlabel("Effectiveness")
+        plt.ylabel("Time in Minutes")
+
+        plt.savefig(filename, bbox_inches='tight')
+
 
 # import threading
 # import time
@@ -99,8 +144,9 @@ class Task:
         return self.dend - self.dstart
 
     def fpause(self, ts: int):
-        self.pauses.append([ts])
-        self.paused = True
+        if self.paused is False:
+            self.pauses.append([ts])
+            self.paused = True
 
     def ftotallenofpauses(self):
         total = 0
@@ -128,11 +174,13 @@ class Task:
 
 users = dict()
 tasks_info = dict()
-admin_id = 107183599
+st = Statistics()
 
-listenfortasks = False
 important_tasks = list()
 important_tasks_status = list()
+
+listenfortasks = False
+admin_id = 107183599
 
 
 def get_token():
@@ -143,6 +191,8 @@ def get_token():
 
 
 def button(bot, update):
+    global st
+
     query = update.callback_query
 
     occurrences = [m.start() for m in re.finditer('"', query.message['text'])]
@@ -160,10 +210,12 @@ def button(bot, update):
             time_delta = ts - last_time
             time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
 
-            bot.edit_message_text('Time since last completed task: {}'.format(time_delta), chat_id=query.message.chat_id,
-                                      message_id=query.message.message_id)
+            bot.edit_message_text('Time since last completed task: {}'.format(time_delta),
+                                  chat_id=query.message.chat_id, message_id=query.message.message_id)
         else:
-            bot.edit_message_text('I hope you will manage with this task :)', chat_id=query.message.chat_id, message_id=query.message.message_id)
+            bot.edit_message_text('I hope you will manage with this task ' +
+                                  emoji.emojize(":muscle:", use_aliases=True), chat_id=query.message.chat_id,
+                                  message_id=query.message.message_id)
 
         keyboard = [
             [InlineKeyboardButton(emoji.emojize(":repeat:", use_aliases=True), callback_data='act_pause'),  # Pause
@@ -173,11 +225,8 @@ def button(bot, update):
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         query.message.reply_text(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) +
-                                  'You #started: "{}"'.format(task_text), reply_markup=reply_markup)
-
-        # bot.edit_message_text(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) +
-        #                       'You #started: "{}"'.format(task_text), chat_id=query.message.chat_id,
-        #                       message_id=query.message.message_id, reply_markup=reply_markup)
+                                 'You #started: "{}"'.format(task_text), reply_markup=reply_markup)
+        pickle.dump(tasks_info, open("dump.pkl", "wb"))
 
     #########
     # Cancel
@@ -203,6 +252,8 @@ def button(bot, update):
         bot.edit_message_text(emoji.emojize(":rotating_light:", use_aliases=True) +
                               '#Paused: "{}"'.format(task_text), chat_id=query.message.chat_id,
                               message_id=query.message.message_id, reply_markup=reply_markup)
+        pickle.dump(tasks_info, open("dump.pkl", "wb"))
+
     #########
     # Continue
     #
@@ -222,13 +273,12 @@ def button(bot, update):
                               '#Continued: "{}". It was paused for {}'.format(task_text, time_delta),
                               chat_id=query.message.chat_id, message_id=query.message.message_id,
                               reply_markup=reply_markup)
+        pickle.dump(tasks_info, open("dump.pkl", "wb"))
 
     #########
     # Done
     #
     elif query.data == 'act_done':
-        pickle.dump(tasks_info, open("dump.pkl", "wb"))
-
         if task_text in important_tasks:
             important_tasks_status[important_tasks.index(task_text)] = True
 
@@ -238,6 +288,9 @@ def button(bot, update):
         num_pauses = tasks_info[task_text].fnumofpauses()
         effect = tasks_info[task_text].feffect()
 
+        # Record statistics
+        st.add(time_delta, time_pauses)
+
         time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
         time_pauses = '{:02d}:{:02d}'.format(time_pauses // 60, time_pauses % 60)
 
@@ -246,12 +299,15 @@ def button(bot, update):
         text_send.append(emoji.emojize(":clock2:", use_aliases=True) + ' - {}'.format(time_delta))
         text_send.append(emoji.emojize(":thumbsup:", use_aliases=True) + ' - {:.1f}%'.format(effect))
         text_send.append("Time of pauses: {}".format(time_pauses))
-        text_send.append("Number of pauses: {}".format(num_pauses))
+        # text_send.append("Number of pauses: {}".format(num_pauses))
         text_send = '\n'.join(text_send)
 
         bot.edit_message_text(text=text_send, chat_id=query.message.chat_id, message_id=query.message.message_id)
-        query.message.reply_text('What do you want to do next? ' + emoji.emojize(":blush:", use_aliases=True) +
-                                 '\nCheck status of today /day_status')
+        if len(get_running_tasks(tasks_info)) == 0:
+            query.message.reply_text('What do you want to do next? ' + emoji.emojize(":blush:", use_aliases=True) +
+                                     '\nCheck /day_status')
+
+        pickle.dump(tasks_info, open("dump.pkl", "wb"))
 
 
 def done(bot, update):
@@ -280,42 +336,55 @@ def done(bot, update):
 def day_status(bot, update):
     text = list()
 
-    ##########################
-    # All tasks are completed
-    if important_tasks_status.count(False) == 0:
-        info = bot.getChat(update.message.chat_id)
-
-        user = ''
-        if info['first_name']:
-            user += info['first_name']
-        if info['last_name']:
-            if user:
-                user += ' '
-            user += info['last_name']
-        if not user:
-            user = 'user'
-        text.append('Congratulations, {}! {}'.format(user, emoji.emojize(":tada:", use_aliases=True)))
-
-    ##################
-    # There are tasks
+    ############################
+    # No tasks at all
+    if len(important_tasks) == 0 and len(get_running_tasks(tasks_info)) == 0 and len(
+            get_completed_tasks(tasks_info)) == 0:
+        update.message.reply_text('Press /start please')
     else:
-        t = 'task'
-        if important_tasks_status.count(False) > 1:
-            t += 's'
-        text.append('You have {} more {} for today:'.format(important_tasks_status.count(False), t))
+        ##########################
+        # All tasks are completed
+        if important_tasks_status.count(False) == 0 and len(get_running_tasks(tasks_info)) == 0:
+            info = bot.getChat(update.message.chat_id)
 
-    for i, task in enumerate(important_tasks):
-        if important_tasks_status[i]:  # Task is completed
-            text.append(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - "{}"'.format(task))
+            user = ''
+            if info['first_name']:
+                user += info['first_name']
+            if info['last_name']:
+                if user:
+                    user += ' '
+                user += info['last_name']
+            if not user:
+                user = 'user'
+            text.append('Congratulations, {}! {}'.format(user, emoji.emojize(":tada:", use_aliases=True)))
+
+        ##################
+        # There are tasks
         else:
-            text.append(emoji.emojize(":radio_button:", use_aliases=True) + ' - "{}"'.format(task) +
-                        "(let's do /task_{})".format(i))
+            if important_tasks_status.count(False) > 0:
+                t = 'task'
+                if important_tasks_status.count(False) > 1:
+                    t += 's'
+                text.append('You have {} more important {} for today:'.format(important_tasks_status.count(False), t))
 
-    if important_tasks_status.count(False) == 0:
-        text.append('Go find something interesting ' + emoji.emojize(":blush:", use_aliases=True))
+        for i, task in enumerate(important_tasks):
+            if important_tasks_status[i]:  # Task is completed
+                text.append(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - "{}"'.format(task))
+            else:
+                text.append(emoji.emojize(":radio_button:", use_aliases=True) + ' - "{}"'.format(task) +
+                            "(let's do /task_{})".format(i))
 
-    text = '\n'.join(text)
-    update.message.reply_text(text)
+        for task in get_running_tasks(tasks_info):
+            text.append(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) + ' - "{}"'.format(task))
+
+        for task in get_completed_tasks(tasks_info):
+            text.append(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - "{}"'.format(task))
+
+        if important_tasks_status.count(False) == 0 and len(get_running_tasks(tasks_info)) == 0:
+            text.append('Go find something interesting ' + emoji.emojize(":blush:", use_aliases=True))
+
+        text = '\n'.join(text)
+        update.message.reply_text(text)
 
 
 def echo(bot, update):
@@ -325,7 +394,8 @@ def echo(bot, update):
 
     else:
         keyboard = [
-            [InlineKeyboardButton(emoji.emojize(":arrow_forward:", use_aliases=True), callback_data='act_start'),  # Start
+            [InlineKeyboardButton(emoji.emojize(":arrow_forward:", use_aliases=True),
+                                  callback_data='act_start'),  # Start
              InlineKeyboardButton(emoji.emojize(":heavy_multiplication_x:", use_aliases=True),
                                   callback_data='act_cancel')]  # Cancel
         ]
@@ -336,12 +406,18 @@ def echo(bot, update):
 
 def running_tasks(bot, update):
     tasks_list = get_running_tasks(tasks_info)
-    update.message.reply_text('\n'.join(tasks_list))
+    if len(tasks_list) > 0:
+        update.message.reply_text('\n'.join(tasks_list))
+    else:
+        update.message.reply_text('No running tasks')
 
 
 def completed_tasks(bot, update):
     tasks_list = get_completed_tasks(tasks_info)
-    update.message.reply_text('\n'.join(tasks_list))
+    if len(tasks_list) > 0:
+        update.message.reply_text('\n'.join(tasks_list))
+    else:
+        update.message.reply_text('No completed tasks')
 
 
 def last_completed_task(bot, update):
@@ -358,11 +434,30 @@ def error(bot, update, error):
     logger.warning('Update "%s" caused error "%s"' % (update, error))
 
 
+def next_day(bot, update):
+    global st
+    global important_tasks
+    global tasks_info
+
+    important_tasks = list()
+    tasks_info = dict()
+
+    st.next_day()
+    update.message.reply_text("Do you want to /get_statistics?")
+
+
+def get_statistics(bot, update):
+    user_id = update.message.chat_id
+    filename = str(user_id) + '.png'
+    st.plot(filename=filename)
+    bot.send_photo(chat_id=user_id, photo=open(filename, 'rb'))
+
+
 def unknown(bot, update):
     cmd = update.message.text
 
-    ########
-    # Task
+    ###############
+    # Task command
     if cmd.startswith('/task'):
         ##################
         # No tasks at all
@@ -386,7 +481,8 @@ def unknown(bot, update):
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
-                update.message.reply_text('You want to start: "{}"'.format(important_tasks[num_task]), reply_markup=reply_markup)
+                update.message.reply_text('You want to start: "{}"'.format(important_tasks[num_task]),
+                                          reply_markup=reply_markup)
 
     else:
         update.message.reply_text("Sorry, I didn't understand that command.")
@@ -405,13 +501,15 @@ def main():
     dp.add_handler(CommandHandler("running_tasks", running_tasks))
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("done", done))
+    dp.add_handler(CommandHandler("next_day", next_day))
+    dp.add_handler(CommandHandler("get_statistics", get_statistics))
     dp.add_handler(CommandHandler("day_status", day_status))
     dp.add_handler(CommandHandler("completed_tasks", completed_tasks))
     dp.add_handler(CommandHandler("last_time", last_completed_task))
 
     # on noncommand i.e message - echo the message on Telegram
-    dp.add_handler(MessageHandler(Filters.text, echo))
     dp.add_handler(MessageHandler(Filters.command, unknown))
+    dp.add_handler(MessageHandler(Filters.text, echo))
     dp.add_handler(CallbackQueryHandler(button))
 
     dp.add_error_handler(error)
