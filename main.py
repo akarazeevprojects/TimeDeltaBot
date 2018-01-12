@@ -230,7 +230,7 @@ def button(bot, update):
                                   message_id=query.message.message_id)
 
         keyboard = [
-            [InlineKeyboardButton(emoji.emojize(":repeat:", use_aliases=True) + ' - Pause',
+            [InlineKeyboardButton(emoji.emojize(":pause_button:", use_aliases=True) + ' - Pause',
                                   callback_data='act_pause'),  # Pause
              InlineKeyboardButton(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - Done',
                                   callback_data='act_done')]  # Done
@@ -276,7 +276,7 @@ def button(bot, update):
         time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
 
         keyboard = [
-            [InlineKeyboardButton(emoji.emojize(":repeat:", use_aliases=True) + ' - Pause',
+            [InlineKeyboardButton(emoji.emojize(":pause_button:", use_aliases=True) + ' - Pause',
                                   callback_data='act_pause'),  # Pause
              InlineKeyboardButton(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - Done',
                                   callback_data='act_done')]  # Done
@@ -308,7 +308,7 @@ def button(bot, update):
         text_send.append(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - "{}"'.format(task_text))
         text_send.append(emoji.emojize(":clock2:", use_aliases=True) + ' - {}'.format(time_delta))
         text_send.append(emoji.emojize(":thumbsup:", use_aliases=True) + ' - {:.1f}%'.format(effect))
-        text_send.append("Time of pauses: {}".format(time_pauses))
+        text_send.append(emoji.emojize(":pause_button:", use_aliases=True) + ' - {}'.format(time_pauses))
         text_send = '\n'.join(text_send)
 
         bot.edit_message_text(text=text_send, chat_id=query.message.chat_id, message_id=query.message.message_id)
@@ -319,7 +319,7 @@ def button(bot, update):
         pickle.dump(users, open("dump.pkl", "wb"))
 
 
-def done(bot, update):
+def enough(bot, update):
     global users
     user_id = update.message.chat_id
 
@@ -358,7 +358,7 @@ def day_status(bot, update):
     # No tasks at all
     if len(users[user_id].important_tasks) == 0 and len(get_running_tasks(users[user_id].tasks_info)) == 0 and len(
             get_completed_tasks(users[user_id].tasks_info)) == 0:
-        update.message.reply_text('Press /add_important_tasks please')
+        update.message.reply_text('You need to /add_important_tasks for today')
     else:
         notcompleted_important_tasks = list(filter(lambda x: x not in get_completed_tasks(users[user_id].tasks_info),
                                                    users[user_id].important_tasks))
@@ -401,8 +401,11 @@ def day_status(bot, update):
                 text.append(emoji.emojize(":radio_button:", use_aliases=True) + ' - "{}"'.format(task) +
                             "(let's do /task_{})".format(i))
 
-        if len(get_running_tasks(users[user_id].tasks_info)) > 0 or len(
-                get_completed_tasks(users[user_id].tasks_info)) > 0:
+        all_tasks_wstatus = get_running_tasks(users[user_id].tasks_info)
+        all_tasks_wstatus.extend(get_completed_tasks(users[user_id].tasks_info))
+        notimportant_tasks = list(filter(lambda x: x not in users[user_id].important_tasks, all_tasks_wstatus))
+
+        if len(notimportant_tasks) > 0:
             text.append('---')
 
         for task in get_running_tasks(users[user_id].tasks_info):
@@ -427,7 +430,7 @@ def echo(bot, update):
 
     if users[user_id].listenfortasks:
         users[user_id].important_tasks.append(update.message.text)
-        update.message.reply_text('Ok. Send /done when you are done with it')
+        update.message.reply_text('Ok. Is it /enough?')
 
     else:
         keyboard = [
@@ -480,18 +483,22 @@ def add_important_tasks(bot, update):
 
 def start(bot, update):
     global users
-
     user_id = update.message.chat_id
-    text = list()
-    text.append('Inspired by Polly and "The Productivity Project" book')
-    text.append('---')
-    text.append('This bot helps to track time spent on some task')
-    text.append('and also it provides "nice" plot (sometimes {})'.format(emoji.emojize(":blush:", use_aliases=True)))
-    update.message.reply_text('\n'.join(text))
 
     if user_id not in users:
         users[user_id] = User(user_id)
-    add_important_tasks(bot, update)
+
+    text = list()
+    text.append('Inspired by Polly and "The Productivity Project" book')
+    text.append('---')
+    text.append('This bot helps to track time spent on some task {}'.format(emoji.emojize(":blush:", use_aliases=True)))
+    text.append('Also it provides you with statistics:'.format(emoji.emojize(":blush:", use_aliases=True)))
+    update.message.reply_text('\n'.join(text))
+
+    bot.send_photo(chat_id=user_id, photo=open('res/demo.png', 'rb'))
+
+    update.message.reply_text("Are you ready to /add_important_tasks for today?")
+    # add_important_tasks(bot, update)
 
 
 def error(bot, update, error):
@@ -570,7 +577,7 @@ def main():
 
     dp.add_handler(CommandHandler("running_tasks", running_tasks))
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("done", done))
+    dp.add_handler(CommandHandler("enough", enough))
     dp.add_handler(CommandHandler("next_day", next_day))
     dp.add_handler(CommandHandler("get_statistics", get_statistics))
     dp.add_handler(CommandHandler("add_important_tasks", add_important_tasks))
