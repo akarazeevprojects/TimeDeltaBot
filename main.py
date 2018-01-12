@@ -489,6 +489,8 @@ def info(bot, update):
     text.append(
         '(3) You have to interact with bot using commands (like /day_status) and using buttons (like "{} - Start").'.format(
             emoji.emojize(":arrow_forward:", use_aliases=True)))
+    text.append('(4) "{}" is the ratio of productivity time and total time spent on task.'.format(
+        emoji.emojize(":thumbsup:", use_aliases=True)))
     text.append('---')
     text.append("Probably /screenshots or /video can explain it better")
     text = '\n'.join(text)
