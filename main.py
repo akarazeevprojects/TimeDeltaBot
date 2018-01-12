@@ -490,7 +490,7 @@ def info(bot, update):
         '(3) You have to interact with bot using commands (like /day_status) and using buttons (like "{} - Start").'.format(
             emoji.emojize(":arrow_forward:", use_aliases=True)))
     text.append('---')
-    text.append("Probably /screenshots can explain it better")
+    text.append("Probably /screenshots or /video can explain it better")
     text = '\n'.join(text)
 
     update.message.reply_text(text)
@@ -541,6 +541,11 @@ def screenshots(bot, update):
     user_id = update.message.chat_id
     for i in range(1, 6):
         bot.send_photo(chat_id=user_id, photo=open('res/{}.jpg'.format(i), 'rb'))
+
+
+def video(bot, update):
+    user_id = update.message.chat_id
+    bot.send_document(chat_id=user_id, document=open('res/demo.m4v', 'rb'), timeout=3000)
 
 
 def get_statistics(bot, update):
@@ -609,6 +614,7 @@ def main():
     dp.add_handler(CommandHandler("enough", enough))
     dp.add_handler(CommandHandler("next_day", next_day))
     dp.add_handler(CommandHandler("screenshots", screenshots))
+    dp.add_handler(CommandHandler("video", video))
     dp.add_handler(CommandHandler("get_statistics", get_statistics))
     dp.add_handler(CommandHandler("add_important_tasks", add_important_tasks))
     dp.add_handler(CommandHandler("day_status", day_status))
