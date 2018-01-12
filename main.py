@@ -540,7 +540,7 @@ def next_day(bot, update):
 def screenshots(bot, update):
     user_id = update.message.chat_id
     for i in range(1, 6):
-        bot.send_photo(chat_id=user_id, photo=open('res/{}.PNG'.format(i), 'rb'))
+        bot.send_photo(chat_id=user_id, photo=open('res/{}.jpg'.format(i), 'rb'))
 
 
 def get_statistics(bot, update):
