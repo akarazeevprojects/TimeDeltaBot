@@ -478,7 +478,20 @@ def add_important_tasks(bot, update):
     user_id = update.message.chat_id
 
     users[user_id].listenfortasks = True
-    update.message.reply_text("Send me most important tasks for today\n({} is good number)".format('3️⃣'))
+    update.message.reply_text("Send me most important tasks for today in separated messages\n({} is good number)".format('3️⃣'))
+
+
+def info(bot, update):
+    text = list()
+    text.append('(1) You have to add task by task, in separated messages.')
+    text.append('(2) Every message you send to bot as text is captured as task.')
+    text.append("That's why he proposes to {} or {} it :)".format('"Start"', '"Cancel"'))
+    text.append(
+        '(3) You have to interact with bot using commands (like /day_status) and using buttons (like "{} - Start").'.format(
+            emoji.emojize(":arrow_forward:", use_aliases=True)))
+    text = '\n'.join(text)
+
+    update.message.reply_text(text)
 
 
 def start(bot, update):
@@ -497,7 +510,7 @@ def start(bot, update):
 
     bot.send_photo(chat_id=user_id, photo=open('res/demo.png', 'rb'))
 
-    update.message.reply_text("Are you ready to /add_important_tasks for today?")
+    update.message.reply_text("Better read /info before /add_important_tasks for today :)")
     # add_important_tasks(bot, update)
 
 
@@ -577,6 +590,7 @@ def main():
 
     dp.add_handler(CommandHandler("running_tasks", running_tasks))
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("info", info))
     dp.add_handler(CommandHandler("enough", enough))
     dp.add_handler(CommandHandler("next_day", next_day))
     dp.add_handler(CommandHandler("get_statistics", get_statistics))
