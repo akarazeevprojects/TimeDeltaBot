@@ -545,6 +545,7 @@ def screenshots(bot, update):
 
 def video(bot, update):
     user_id = update.message.chat_id
+    update.message.reply_text("It will take some time...")
     bot.send_document(chat_id=user_id, document=open('res/demo.m4v', 'rb'), timeout=3000)
 
 
