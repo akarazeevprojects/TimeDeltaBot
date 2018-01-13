@@ -72,14 +72,28 @@ def button(bot, update):
     query = update.callback_query
     user_id = query.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     occurrence = query.message['text'].index(':')
-    task_text = query.message['text'][occurrence + 2:]
+
+    if query.message.message_id in users[user_id].tasks_by_message:
+        task_text = users[user_id].tasks_by_message[query.message.message_id]
+    else:
+        task_text = query.message['text'][occurrence + 2:]
+
+    text_to_send = list()
 
     logger.debug('-> Button -- task_text: ' + task_text)
+
     #########
     # Start
     #
     if query.data == 'act_start':
+        users[user_id].tasks_by_message[query.message.message_id] = task_text
+
+        itisfirsttask = len(get_running_tasks(users[user_id].tasks_info)) == 0
+
         ts = int(time.time())
         users[user_id].tasks_info[task_text] = Task(ts)
 
@@ -88,12 +102,10 @@ def button(bot, update):
             time_delta = ts - last_time
             time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
 
-            bot.edit_message_text('Time since last completed task: {}'.format(time_delta),
-                                  chat_id=query.message.chat_id, message_id=query.message.message_id)
-        else:
-            bot.edit_message_text('I hope you will manage with this task ' +
-                                  emoji.emojize(":muscle:", use_aliases=True), chat_id=query.message.chat_id,
-                                  message_id=query.message.message_id)
+            text_to_send.append('Time since last completed task: {}'.format(time_delta))
+        elif itisfirsttask:
+            text_to_send.append('I hope you will manage with this task ' +
+                                emoji.emojize(":muscle:", use_aliases=True))
 
         keyboard = [
             [InlineKeyboardButton(emoji.emojize(":pause_button:", use_aliases=True) + ' - Pause',
@@ -103,8 +115,13 @@ def button(bot, update):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        query.message.reply_text(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) +
-                                 'You #started: {}'.format(task_text), reply_markup=reply_markup)
+        text_to_send.append(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) +
+                            'You #started: {}'.format(task_text))
+        text_to_send = '\n'.join(text_to_send)
+
+        bot.edit_message_text(text_to_send, chat_id=query.message.chat_id, message_id=query.message.message_id,
+                              reply_markup=reply_markup)
+
         pickle.dump(users, open("dump.pkl", "wb"))
 
     #########
@@ -153,7 +170,7 @@ def button(bot, update):
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         bot.edit_message_text(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) +
-                              '#Continued: {}. It was paused for {}'.format(task_text, time_delta),
+                              '#Continued: {}.\nIt was paused for {}'.format(task_text, time_delta),
                               chat_id=query.message.chat_id, message_id=query.message.message_id,
                               reply_markup=reply_markup)
         pickle.dump(users, open("dump.pkl", "wb"))
@@ -192,6 +209,9 @@ def enough(bot, update):
     global users
     user_id = update.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     if users[user_id].listenfortasks:
         text = list()
         t = 'task'
@@ -205,7 +225,7 @@ def enough(bot, update):
                 text.append(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) + ' - {}'.format(task))
             else:
                 text.append(emoji.emojize(":radio_button:", use_aliases=True) + ' - {}'.format(task) +
-                            " (let's do /task_{})".format(i))
+                            " (/do_task_{})".format(i+1))
 
         text = '\n'.join(text)
         update.message.reply_text(text)
@@ -220,6 +240,9 @@ def enough(bot, update):
 def day_status(bot, update):
     global users
     user_id = update.message.chat_id
+
+    if user_id not in users:
+        users[user_id] = User(user_id)
 
     text = list()
 
@@ -261,6 +284,7 @@ def day_status(bot, update):
             else:
                 text.append('You have no more important tasks for today')
 
+        # Adding important tasks
         for i, task in enumerate(users[user_id].important_tasks):
             if task in get_completed_tasks(users[user_id].tasks_info):  # Task is completed
                 text.append(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - {}'.format(task))
@@ -268,26 +292,33 @@ def day_status(bot, update):
                 text.append(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) + ' - {}'.format(task))
             else:
                 text.append(emoji.emojize(":radio_button:", use_aliases=True) + ' - {}'.format(task) +
-                            " (let's do /task_{})".format(i))
+                            " (/do_task_{})".format(i+1))
 
         all_tasks_wstatus = get_running_tasks(users[user_id].tasks_info)
         all_tasks_wstatus.extend(get_completed_tasks(users[user_id].tasks_info))
         notimportant_tasks = list(filter(lambda x: x not in users[user_id].important_tasks, all_tasks_wstatus))
 
+        # There are some tasks that are not important
         if len(notimportant_tasks) > 0:
             text.append('---')
 
+        # Adding running tasks
         for task in get_running_tasks(users[user_id].tasks_info):
             if task not in users[user_id].important_tasks:
                 text.append(emoji.emojize(":hourglass_flowing_sand:", use_aliases=True) + ' - {}'.format(task))
 
+        # Adding completed tasks
         for task in get_completed_tasks(users[user_id].tasks_info):
             if task not in users[user_id].important_tasks:
                 text.append(emoji.emojize(":white_check_mark:", use_aliases=True) + ' - {}'.format(task))
 
+        # All tasks are completed
         if len(notcompleted_important_tasks) == 0 and len(get_running_tasks(users[user_id].tasks_info)) == 0:
             text.append('Go find something interesting ' + emoji.emojize(":blush:", use_aliases=True))
             text.append('Are you ready for /next_day?')
+            text.append('Or maybe you want to /procrastinate?')
+        else:
+            text.append('I want to /procrastinate {}'.format(emoji.emojize(":smirk:", use_aliases=True)))
 
         text = '\n'.join(text)
         update.message.reply_text(text)
@@ -296,6 +327,9 @@ def day_status(bot, update):
 def echo(bot, update):
     global users
     user_id = update.message.chat_id
+
+    if user_id not in users:
+        users[user_id] = User(user_id)
 
     if users[user_id].listenfortasks:
         users[user_id].important_tasks.append(update.message.text)
@@ -317,6 +351,9 @@ def running_tasks(bot, update):
     global users
     user_id = update.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     tasks_list = get_running_tasks(users[user_id].tasks_info)
     if len(tasks_list) > 0:
         update.message.reply_text('\n'.join(tasks_list))
@@ -327,6 +364,9 @@ def running_tasks(bot, update):
 def completed_tasks(bot, update):
     global users
     user_id = update.message.chat_id
+
+    if user_id not in users:
+        users[user_id] = User(user_id)
 
     tasks_list = get_completed_tasks(users[user_id].tasks_info)
     if len(tasks_list) > 0:
@@ -339,6 +379,9 @@ def last_completed_task(bot, update):
     global users
     user_id = update.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     update.message.reply_text(last_completed_task_time(users[user_id].tasks_info))
 
 
@@ -346,8 +389,34 @@ def add_important_tasks(bot, update):
     global users
     user_id = update.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     users[user_id].listenfortasks = True
     update.message.reply_text("Send me most important tasks for today in separated messages\n({} is good number)".format('3️⃣'))
+
+
+def procrastinate(bot, update):
+    global users
+    user_id = update.message.chat_id
+
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
+    ts = int(time.time())
+
+    if users[user_id].procr.done is True:
+        users[user_id].procr.start(ts)
+
+        update.message.reply_text('Ok. Procrastination has began.\nStop to /procrastinate')
+    else:
+        users[user_id].procr.end(ts)
+
+        time_delta = users[user_id].procr.total
+        users[user_id].st.add_procr(time_delta)
+        time_delta = '{:02d}:{:02d}'.format(time_delta // 60, time_delta % 60)
+
+        update.message.reply_text('Ok. You spent on procrastination: {}'.format(time_delta))
 
 
 def info(bot, update):
@@ -361,17 +430,11 @@ def info(bot, update):
     text.append('(4) "{}" is the ratio of productive time and total time spent on task.'.format(
         emoji.emojize(":thumbsup:", use_aliases=True)))
     text.append('---')
-    text.append("Probably /screenshots or /video can explain it better")
+    # text.append("Probably /screenshots or /video can explain it better")
+    text.append("Probably /screenshots can explain it better")
     text = '\n'.join(text)
 
     update.message.reply_text(text)
-
-    user_id = update.message.chat_id
-    # bot.send_video(chat_id=user_id, video=open('res/demo.mp4', 'rb'), timeout=3000)
-    # bot.send_document(chat_id=user_id, document=open('res/demo.png', 'rb'))
-    # bot.send_document(chat_id=user_id, document=open('res/demo.mp4', 'rb'))
-    # bot.send_document(chat_id=user_id, document=open('res/kek.mp4', 'rb'))
-    # bot.send_document(chat_id=user_id, document=open('res/demo.mp4', 'rb'))
 
 
 def start(bot, update):
@@ -391,7 +454,6 @@ def start(bot, update):
     bot.send_photo(chat_id=user_id, photo=open('res/demo.png', 'rb'))
 
     update.message.reply_text("Better read /info before /add_important_tasks for today :)")
-    # add_important_tasks(bot, update)
 
 
 def error(bot, update, error):
@@ -402,8 +464,13 @@ def next_day(bot, update):
     global users
     user_id = update.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     users[user_id].important_tasks = list()
+    users[user_id].tasks_by_message = dict()
     users[user_id].tasks_info = dict()
+    users[user_id].procr.reset()
     users[user_id].st.next_day()
     update.message.reply_text("Do you want to /get_statistics?\nLet's /add_important_tasks for today")
 
@@ -419,7 +486,7 @@ def video(bot, update):
     def func():
         user_id = update.message.chat_id
         update.message.reply_text("It will take some time...")
-        bot.send_document(chat_id=user_id, document=open('res/demo.m4v', 'rb'), timeout=3000)
+        bot.send_video(chat_id=user_id, document=open('res/demo.m4v', 'rb'), timeout=3000)
 
     thread = threading.Thread(target=func(), args=())
     thread.daemon = True  # Daemonize thread
@@ -429,6 +496,9 @@ def video(bot, update):
 def get_statistics(bot, update):
     global users
     user_id = update.message.chat_id
+
+    if user_id not in users:
+        users[user_id] = User(user_id)
 
     filename = str(user_id) + '.png'
     users[user_id].st.plot(filename=filename)
@@ -442,18 +512,21 @@ def unknown(bot, update):
     global users
     user_id = update.message.chat_id
 
+    if user_id not in users:
+        users[user_id] = User(user_id)
+
     cmd = update.message.text
 
     ###############
     # Task command
-    if cmd.startswith('/task'):
+    if cmd.startswith('/do_task'):
         ##################
         # No tasks at all
         if len(users[user_id].important_tasks) == 0:
             update.message.reply_text('Press /add_important_tasks please')
 
         else:
-            num_task = int(cmd.split('_')[-1])
+            num_task = int(cmd.split('_')[-1]) - 1
 
             #########################
             # This task is completed
@@ -488,11 +561,12 @@ def main():
 
     dp.add_handler(CommandHandler("running_tasks", running_tasks))
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("procrastinate", procrastinate))
     dp.add_handler(CommandHandler("info", info))
     dp.add_handler(CommandHandler("enough", enough))
     dp.add_handler(CommandHandler("next_day", next_day))
     dp.add_handler(CommandHandler("screenshots", screenshots))
-    dp.add_handler(CommandHandler("video", video))
+    # dp.add_handler(CommandHandler("video", video))
     dp.add_handler(CommandHandler("get_statistics", get_statistics))
     dp.add_handler(CommandHandler("add_important_tasks", add_important_tasks))
     dp.add_handler(CommandHandler("day_status", day_status))
