@@ -1,3 +1,5 @@
+*.pkl
+*.png
 */*.json
 
 # Byte-compiled / optimized / DLL files
