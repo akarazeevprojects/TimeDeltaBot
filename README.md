@@ -1,6 +1,6 @@
 ## TimeDeltaBot
 
-You can test it here: [t.me/TimeDeltaBot](t.me/TimeDeltaBot)
+You can test it here: [t.me/TimeDeltaBot](https://t.me/TimeDeltaBot)
 
 This bot helps to track time spent on some tasks.
 
